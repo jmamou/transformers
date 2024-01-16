@@ -156,7 +156,7 @@ class AssistedCandidateGenerator(CandidateGenerator):
         self.generation_config.return_dict_in_generate = True
         self.generation_config.output_scores = True
 
-    def get_candidates(self, input_ids: torch.LongTensor) -> Tuple[torch.LongTensor, Optional[torch.FloatTensor]]:
+    def get_candidates(self, input_ids: torch.LongTensor, max_new_tokens=None) -> Tuple[torch.LongTensor, Optional[torch.FloatTensor]]:
         """
         Fetches the candidates to be tried for the current input.
 
@@ -188,9 +188,13 @@ class AssistedCandidateGenerator(CandidateGenerator):
             self.assistant_kwargs = _prepare_token_type_ids(self.assistant_kwargs, new_cur_len)
 
         # 2. Forecast next N tokens using the assistant model.
+        if max_new_tokens is not None:
+            max_new_tokens = min(max_new_tokens, int(self.num_assistant_tokens))
+        else:
+            max_new_tokens = int(self.num_assistant_tokens)
         assistant_generation_kwargs = {
             self.input_ids_key: input_ids,
-            "max_new_tokens": int(self.num_assistant_tokens),
+            "max_new_tokens": max_new_tokens,
             "generation_config": self.generation_config,
             "logits_processor": self.logits_processor,
         }

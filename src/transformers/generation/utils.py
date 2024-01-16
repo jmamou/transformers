@@ -4321,9 +4321,11 @@ class GenerationMixin:
                     break
 
             cur_len = input_ids.shape[-1]
-
+            
+            # set max number of tokens to generate 
+            max_new_tokens = max_len - cur_len - 1
             #  1. Fetch candidate sequences from a `CandidateGenerator`
-            candidate_input_ids, candidate_logits = candidate_generator.get_candidates(input_ids)
+            candidate_input_ids, candidate_logits = candidate_generator.get_candidates(input_ids, max_new_tokens)
             candidate_input_ids = candidate_input_ids.to(self.device)
             if candidate_logits is not None:
                 candidate_logits = candidate_logits.to(self.device)
