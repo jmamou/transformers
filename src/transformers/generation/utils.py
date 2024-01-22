@@ -4326,7 +4326,8 @@ class GenerationMixin:
             cur_len = input_ids.shape[-1]
             
             # set max number of tokens to generate 
-            max_new_tokens = max_len - cur_len
+            # max_new_tokens = max_len - cur_len
+            max_new_tokens = None
             #  1. Fetch candidate sequences from a `CandidateGenerator`
             candidate_input_ids, candidate_logits = candidate_generator.get_candidates(input_ids, max_new_tokens)
             candidate_input_ids = candidate_input_ids.to(self.device)
@@ -4376,6 +4377,7 @@ class GenerationMixin:
             # 👉 Apply algorithm 1 from the speculative decoding paper (https://arxiv.org/pdf/2211.17192.pdf).
             max_matches = max_len - cur_len - 1
             if do_sample and candidate_logits is not None:
+                print(f"speculative")
                 valid_tokens, n_matches = _speculative_sampling(
                     candidate_input_ids,
                     candidate_logits,
@@ -4414,6 +4416,7 @@ class GenerationMixin:
             if streamer is not None:
                 streamer.put(valid_tokens.cpu())
             new_cur_len = input_ids.shape[-1]
+            print(f"new_cur_len: {new_cur_len}")
 
             # 4.2. Discard past key values relative to unused assistant tokens
             new_cache_size = new_cur_len - 1
