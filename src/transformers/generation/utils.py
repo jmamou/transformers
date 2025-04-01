@@ -4827,7 +4827,8 @@ def _speculative_sampling(
             valid_tokens = torch.cat((new_candidate_input_ids[:, :n_matches], t), dim=-1)
         else:
             valid_tokens = t
-
+    if n_matches < new_candidate_input_ids.shape[-1]:
+        print(f'{new_candidate_input_ids[:, n_matches]}\t{t}')
     return valid_tokens, n_matches
 
 
