@@ -4828,7 +4828,7 @@ def _speculative_sampling(
         else:
             valid_tokens = t
     if n_matches < new_candidate_input_ids.shape[-1]:
-        print(f'{new_candidate_input_ids[:, n_matches]}\t{t}')
+        print(f'{new_candidate_input_ids[:, n_matches].item()},{t.item()}')
     return valid_tokens, n_matches
 
 
