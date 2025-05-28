@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 from ..utils.deprecation import deprecate_kwarg
 
+from scipy.spatial.distance import cosine
 
 class CandidateGenerator:
     """Abstract base class for all candidate generators that can be applied during assisted generation."""
@@ -709,6 +710,7 @@ class AssistantToTargetTranslator:
         assistant_model_device: str = "cpu",
         assistant_model: Optional["PreTrainedModel"] = None,
         assistant_prune_lm_head: bool = False,
+        target_input_embeddings_weight: Optional[nn.Embedding] = None,
     ):
         self._target_tokenizer: "PreTrainedTokenizerBase" = target_tokenizer
         self._assistant_tokenizer: "PreTrainedTokenizerBase" = assistant_tokenizer
@@ -722,6 +724,18 @@ class AssistantToTargetTranslator:
         self._suppress_input_ids: list[int] = self._get_suppress_input_ids()
         self.logits_processors: Optional[LogitsProcessorList] = None
         self.assistant_prune_lm_head = assistant_prune_lm_head and assistant_model is not None
+
+        # Mask for valid indices
+        self._assistant_indices_mask = self._assistant_to_target_input_ids != self.SUPPRESS_TOKEN_ID
+        # Exclude invalid indices
+        self._target_logits_supported_indices = self._assistant_to_target_input_ids[self._assistant_indices_mask]
+        target_input_embeddings_weight_supported = target_input_embeddings_weight[self._target_logits_supported_indices]
+        # Normalize the embeddings along the last dimension
+        normalized_weight = torch.nn.functional.normalize(target_input_embeddings_weight, dim=-1)
+        normalized_weight_supported = torch.nn.functional.normalize(target_input_embeddings_weight_supported, dim=-1)
+        # Compute cosine similarity for each pair
+        self._cosine_similarities = (torch.matmul(normalized_weight_supported, normalized_weight.T) + 1) / 2 
+
         if len(self._suppress_input_ids) > 0:
             # the assistant vocab is not a subset of the target vocab
             if self.assistant_prune_lm_head:
@@ -826,16 +840,14 @@ class AssistantToTargetTranslator:
         target_logits: torch.FloatTensor = torch.full(
             target_shape, self.FILTER_VALUE, device=self._assistant_model_device
         )
-        # Mask for valid indices
-        assistant_indices_mask = self._assistant_to_target_input_ids != self.SUPPRESS_TOKEN_ID
-        # Exclude invalid indices
-        target_logits_supported_indices = self._assistant_to_target_input_ids[assistant_indices_mask]
 
         if self.assistant_prune_lm_head:
-            target_logits[..., target_logits_supported_indices] = assistant_logits
+            target_logits[..., self._target_logits_supported_indices] = assistant_logits
+            weighted_logits = torch.matmul(self._cosine_similarities, target_logits[..., self._target_logits_supported_indices])
+            target_logits[..., :self.target_vocab_size] = weighted_logits
         else:
             valid_assistant_logits = assistant_logits[..., : self._assistant_to_target_input_ids.shape[0]]
-            target_logits[..., target_logits_supported_indices] = valid_assistant_logits[..., assistant_indices_mask]
+            target_logits[..., self._target_logits_supported_indices] = valid_assistant_logits[..., self._assistant_indices_mask]
         return target_logits
 
 
@@ -857,6 +869,7 @@ class AssistantVocabTranslatorCache:
         assistant_model_device: str = "cpu",
         assistant_model: Optional["PreTrainedModel"] = None,
         assistant_prune_lm_head: bool = False,
+        target_input_embeddings_weight: Optional[nn.Embedding] = None,
     ) -> AssistantToTargetTranslator:
         assistant_dict = cls._cache.get(target_tokenizer)
         if assistant_dict is None:
@@ -872,6 +885,7 @@ class AssistantVocabTranslatorCache:
                 assistant_model_device,
                 assistant_model,
                 assistant_prune_lm_head,
+                target_input_embeddings_weight
             )
             assistant_dict[assistant_tokenizer] = mapping
 
